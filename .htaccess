@@ -1,0 +1,52 @@
+# JSBattle — Apache / cPanel shared hosting (Hostinger, GoDaddy, Bluehost, …)
+#
+# Upload the contents of this folder to public_html/ and this file is picked up
+# automatically. No SPA rewrite rules are needed: JSBattle routes on the URL
+# *hash* (#/levels), which never reaches the server, so every request is just a
+# real static file.
+
+# ---- Force HTTPS + canonical host ----------------------------------------
+# Uncomment once your SSL certificate is active (most hosts issue a free
+# Let's Encrypt cert from the control panel).
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+  # SAMEORIGIN, never DENY: the app frames its own sandbox.html to run player
+  # code. DENY would block that iframe and break every level.
+  Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
+
+# ---- Caching -------------------------------------------------------------
+# index.html must not be cached hard, or players keep an old app after a
+# deploy. Static assets are safe to cache for a long time.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+<FilesMatch "\.(html)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, must-revalidate"
+  </IfModule>
+</FilesMatch>
+
+# ---- MIME types ----------------------------------------------------------
+AddType application/manifest+json .webmanifest
+AddType image/svg+xml .svg
+
+# ---- Compression ---------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript image/svg+xml application/manifest+json
+</IfModule>
+
+ErrorDocument 404 /index.html

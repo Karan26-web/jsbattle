@@ -1,0 +1,21 @@
+# JSBattle — headers for Cloudflare Pages and Netlify.
+# Both read this file from the root of the published directory.
+#
+# X-Frame-Options is SAMEORIGIN, never DENY: the app frames its own
+# sandbox.html to execute player code, and DENY would break every level.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  X-Frame-Options: SAMEORIGIN
+
+# index.html stays uncached so a deploy reaches players immediately.
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+/*.png
+  Cache-Control: public, max-age=2592000
+
+/*.svg
+  Cache-Control: public, max-age=2592000

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<title>JSBattle — Pixel-perfect canvas duels and JavaScript code golf</title>
+<meta name="description" content="Recreate canvas artwork pixel-for-pixel and golf JavaScript down to the character. 23 ranked levels, six tiers, and a global leaderboard." />
+<meta name="author" content="Karan" />
+<meta name="theme-color" content="#0f0e1a" />
+<meta name="color-scheme" content="dark" />
+
+<!--
+  DEPLOY STEP: replace https://jsbattle.example with your real domain in the
+  four absolute URLs below. Link previews on WhatsApp, Slack, X, LinkedIn and
+  iMessage require absolute URLs — relative paths are silently ignored by the
+  scrapers, so a wrong value here shows a blank card rather than an error.
+-->
+<link rel="canonical" href="https://karan26-web.github.io/jsbattle/" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="JSBattle" />
+<meta property="og:title" content="JSBattle — Pixel-perfect canvas duels and JavaScript code golf" />
+<meta property="og:description" content="23 ranked levels. Recreate canvas artwork pixel-for-pixel, golf JavaScript down to the character, and climb six tiers." />
+<meta property="og:url" content="https://karan26-web.github.io/jsbattle/" />
+<meta property="og:image" content="https://karan26-web.github.io/jsbattle/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="JSBattle — Pixel-perfect canvas duels and JavaScript code golf" />
+<meta name="twitter:description" content="23 ranked levels. Recreate canvas artwork pixel-for-pixel and golf JavaScript down to the character." />
+<meta name="twitter:image" content="https://karan26-web.github.io/jsbattle/og-image.png" />
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/levels" aria-label="JSBattle home">
+    <span class="brand-word"><span>JS</span><span class="vs-mark">VS</span><span>Battle</span></span>
+  </a>
+  <nav aria-label="Primary">
+    <a href="#/levels">Levels</a>
+    <a href="#/ranks">Rankings</a>
+    <a href="#/profile">Profile</a>
+    <a href="#/about">About</a>
+  </nav>
+  <div class="nav-actions" id="nav-actions"></div>
+</header>
+
+<main id="app"></main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-col brand-col">
+      <span class="brand-word"><span>JS</span><span class="vs-mark">VS</span><span>Battle</span></span>
+      <p>Pixel-perfect canvas duels and character-count code golf. 23 levels, six ranked tiers.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Play</h4>
+      <a href="#/levels">All levels</a>
+      <a href="#/ranks">Global rankings</a>
+      <a href="#/profile">Your profile</a>
+    </div>
+    <div class="footer-col">
+      <h4>About</h4>
+      <a href="#/about">About the author</a>
+      <a href="https://karan26.vercel.app/" target="_blank" rel="noopener noreferrer">Portfolio</a>
+      <a href="https://github.com/Karan26-web" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <p class="footer-note">Every submission runs in a Worker inside a sandboxed iframe with network access revoked.</p>
+    </div>
+  </div>
+  <div class="footer-bar">
+    <span>&copy; <span id="footer-year">2026</span> JSBattle</span>
+    <span class="made-by">Made by <b><a href="#/about">Karan Kumar</a></b></span>
+  </div>
+</footer>
+
+<!-- Load order matters: these are classic scripts and run top to bottom. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="ranks.js"></script>
+<script src="levels.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+<script>document.getElementById("footer-year").textContent = new Date().getFullYear();</script>
+</body>
+</html>

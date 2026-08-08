@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<!--
+  This document is loaded ONLY inside an <iframe sandbox="allow-scripts"> with
+  NO "allow-same-origin" — that puts it on a unique opaque origin, so it can
+  never read the parent's cookies, localStorage, or DOM, no matter what the
+  code inside does.
+
+  Player code does not run in this document either. It runs in a Worker that
+  this document spawns from a blob: URL. Two reasons:
+
+    1. A Worker can be killed. terminate() interrupts a synchronous infinite
+       loop; nothing can interrupt one running on a document's main thread.
+       Because the loop burns the WORKER's thread, this document's setTimeout
+       still fires, so the watchdog actually gets a chance to run.
+    2. Blob workers inherit the creating document's origin and CSP, so the
+       worker is still on the opaque origin with the network policy below.
+
+  The CSP blocks any outbound network call from either the document or the
+  worker, as a second layer on top of the sandbox attribute.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; img-src data: blob:;" />
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0b12; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="jsb-canvas" width="400" height="300"></canvas>
+<script>
+(function () {
+  "use strict";
+
+  // Belt-and-suspenders: even though CSP blocks network fetches, also strip
+  // the APIs so calling them fails fast with a clear error inside the harness
+  // rather than silently hanging on a blocked request.
+  try {
+    window.fetch = undefined;
+    window.XMLHttpRequest = undefined;
+    window.WebSocket = undefined;
+    window.EventSource = undefined;
+  } catch (e) {}
+
+  var canvas = document.getElementById("jsb-canvas");
+  var currentWorker = null;
+
+  // OffscreenCanvas is what lets visual levels run off the main thread. If a
+  // browser lacks it we fall back to running visual code in this document,
+  // which loses the kill switch for that level type only.
+  var CAN_OFFSCREEN = typeof OffscreenCanvas !== "undefined";
+
+  function post(msg, transfer) {
+    // The parent origin is checked on the receiving end; this document has no
+    // origin of its own to leak (sandboxed, no allow-same-origin).
+    if (transfer) parent.postMessage(msg, "*", transfer);
+    else parent.postMessage(msg, "*");
+  }
+
+  function killWorker() {
+    if (currentWorker) {
+      currentWorker.terminate();
+      currentWorker = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // The worker harness. Player code is concatenated in ahead of this, at the
+  // worker's top level, so `render` / `solve` become plain globals — no eval
+  // and therefore no need for 'unsafe-eval' in the CSP.
+  // ---------------------------------------------------------------------
+  // Runs BEFORE the player's code. It captures the real postMessage into a
+  // property the harness can use, then replaces self.postMessage with a
+  // thrower. Player code is concatenated after this and therefore cannot post
+  // a fabricated "all tests passed" message straight to the iframe — which it
+  // could before, since it shares the worker's global scope and runs first.
+  var PRELUDE = [
+    '(function () {',
+    '  var real = self.postMessage.bind(self);',
+    '  Object.defineProperty(self, "__jsbEmit", {',
+    '    value: function (m, t) { return t ? real(m, t) : real(m); },',
+    '    writable: false, configurable: false, enumerable: false',
+    '  });',
+    '  try {',
+    '    Object.defineProperty(self, "postMessage", {',
+    '      value: function () { throw new Error("postMessage is not available inside a level."); },',
+    '      writable: false, configurable: false, enumerable: false',
+    '    });',
+    '  } catch (e) {}',
+    '})();'
+  ].join("\n");
+
+  // TOKEN is substituted per run. The iframe drops any message that does not
+  // carry it, so calling __jsbEmit directly is not enough to forge a result.
+  var HARNESS = [
+    'try {',
+    '  self.fetch = undefined; self.XMLHttpRequest = undefined;',
+    '  self.WebSocket = undefined; self.EventSource = undefined;',
+    '  self.importScripts = undefined; self.indexedDB = undefined;',
+    '} catch (e) {}',
+    'self.onmessage = function (ev) {',
+    '  var job = ev.data;',
+    '  try {',
+    '    if (job.mode === "visual") {',
+    '      if (typeof render !== "function") {',
+    '        self.__jsbEmit({ t: TOKEN, ok: false, error: "You must define a function named render(ctx)." });',
+    '        return;',
+    '      }',
+    '      var c = new OffscreenCanvas(job.size.w, job.size.h);',
+    '      var ctx = c.getContext("2d");',
+    '      render(ctx);',
+    '      var img = ctx.getImageData(0, 0, job.size.w, job.size.h);',
+    '      self.__jsbEmit(',
+    '        { t: TOKEN, ok: true, width: job.size.w, height: job.size.h, pixels: img.data.buffer },',
+    '        [img.data.buffer]',
+    '      );',
+    '      return;',
+    '    }',
+    '    if (typeof solve !== "function") {',
+    '      self.__jsbEmit({ t: TOKEN, ok: false, error: "You must define a function named solve(...)." });',
+    '      return;',
+    '    }',
+    '    var results = [];',
+    '    for (var i = 0; i < job.testCases.length; i++) {',
+    '      try {',
+    '        var actual = solve.apply(null, job.testCases[i].input);',
+    '        // Serialise here rather than transferring the raw value: a function,',
+    '        // symbol or circular object would fail structured clone and surface',
+    '        // as an unreadable DataCloneError instead of a normal failed test.',
+    '        var shown = JSON.stringify(actual);',
+    '        results.push({',
+    '          pass: shown === JSON.stringify(job.testCases[i].expected),',
+    '          actual: shown === undefined ? "undefined" : shown',
+    '        });',
+    '      } catch (err) {',
+    '        results.push({ pass: false, error: String((err && err.message) || err) });',
+    '      }',
+    '    }',
+    '    self.__jsbEmit({ t: TOKEN, ok: true, results: results });',
+    '  } catch (err) {',
+    '    self.__jsbEmit({ t: TOKEN, ok: false, error: String((err && err.message) || err) });',
+    '  }',
+    '};'
+  ].join("\n");
+
+  // Runs `job` in a fresh throwaway worker. `replyType` is the message type
+  // the parent is waiting on. Resolution is one-shot: whichever of result,
+  // worker error, or caller-side termination happens first wins.
+  function runInWorker(userCode, job, replyType) {
+    var settled = false;
+    function settle(msg, transfer) {
+      if (settled) return;
+      settled = true;
+      killWorker();
+      post(msg, transfer);
+    }
+
+    // Fresh per run, and only ever present in source that appears AFTER the
+    // player's code, so their code cannot read it at load time.
+    var token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+    var blob;
+    try {
+      blob = new Blob(
+        [
+          PRELUDE + "\n;\n",
+          userCode + "\n;\n",
+          "var TOKEN = " + JSON.stringify(token) + ";\n" + HARNESS
+        ],
+        { type: "text/javascript" }
+      );
+    } catch (err) {
+      settle({ type: replyType, ok: false, error: String((err && err.message) || err) });
+      return;
+    }
+
+    var url = URL.createObjectURL(blob);
+    var worker;
+    try {
+      worker = new Worker(url);
+    } catch (err) {
+      URL.revokeObjectURL(url);
+      settle({ type: replyType, ok: false, error: "Could not start sandbox worker: " + ((err && err.message) || err) });
+      return;
+    }
+    currentWorker = worker;
+
+    worker.onmessage = function (ev) {
+      var d = ev.data || {};
+      // Anything without this run's token did not come from the harness.
+      if (d.t !== token) return;
+      URL.revokeObjectURL(url);
+      if (!d.ok) {
+        settle({ type: replyType, ok: false, error: d.error || "Unknown error." });
+        return;
+      }
+      if (job.mode === "visual") {
+        settle(
+          { type: replyType, ok: true, width: d.width, height: d.height, pixels: d.pixels },
+          [d.pixels]
+        );
+      } else {
+        settle({ type: replyType, ok: true, results: d.results });
+      }
+    };
+
+    // Fires for syntax errors in the player's code (the worker script never
+    // parses) as well as anything thrown at the worker's top level.
+    worker.onerror = function (ev) {
+      URL.revokeObjectURL(url);
+      ev.preventDefault && ev.preventDefault();
+      settle({
+        type: replyType,
+        ok: false,
+        error: (ev && ev.message) || "Your code threw before it could run."
+      });
+    };
+
+    worker.postMessage(job);
+  }
+
+  // ---------------------------------------------------------------------
+  // Legacy path: only used when OffscreenCanvas is missing. Runs on this
+  // document's main thread, so an infinite loop here is not recoverable —
+  // same caveat the iframe-only design had everywhere.
+  // ---------------------------------------------------------------------
+  function runVisualOnMainThread(userCode, size) {
+    canvas.width = size.w;
+    canvas.height = size.h;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, size.w, size.h);
+
+    window.__jsb_ctx__ = ctx;
+    window.__jsb_ok__ = false;
+    window.__jsb_error__ = null;
+
+    var scriptEl = document.createElement("script");
+    scriptEl.textContent =
+      userCode +
+      "\n;(function(){ try { render(window.__jsb_ctx__); window.__jsb_ok__ = true; } " +
+      "catch(err) { window.__jsb_error__ = String(err && err.message || err); } })();";
+    document.body.appendChild(scriptEl);
+    document.body.removeChild(scriptEl);
+
+    if (window.__jsb_error__) {
+      post({ type: "visual-result", ok: false, error: window.__jsb_error__ });
+      return;
+    }
+    if (!window.__jsb_ok__) {
+      post({ type: "visual-result", ok: false, error: "render(ctx) was not called or did not complete." });
+      return;
+    }
+
+    var imageData;
+    try {
+      imageData = ctx.getImageData(0, 0, size.w, size.h);
+    } catch (err) {
+      post({ type: "visual-result", ok: false, error: "Could not read canvas pixels: " + err.message });
+      return;
+    }
+    post({
+      type: "visual-result",
+      ok: true,
+      width: size.w,
+      height: size.h,
+      pixels: Array.prototype.slice.call(imageData.data)
+    });
+  }
+
+  window.addEventListener("message", function (ev) {
+    var data = ev.data || {};
+    try {
+      if (data.type === "run-visual") {
+        if (CAN_OFFSCREEN) {
+          runInWorker(data.code, { mode: "visual", size: data.size }, "visual-result");
+        } else {
+          runVisualOnMainThread(data.code, data.size);
+        }
+      } else if (data.type === "run-golf") {
+        runInWorker(data.code, { mode: "golf", testCases: data.testCases }, "golf-result");
+      } else if (data.type === "abort") {
+        killWorker();
+      }
+    } catch (err) {
+      post({ type: "fatal-error", error: String((err && err.message) || err) });
+    }
+  });
+
+  post({ type: "ready" });
+})();
+</script>
+</body>
+</html>
