@@ -9,6 +9,36 @@ GoDaddy logins, which I have no access to.
 
 ---
 
+## 0. First: the domain must not be on `clientHold`
+
+A brand new domain is suspended by the registrar until the registrant email is
+verified. While that is true the registry pulls it out of DNS completely, so it
+resolves for nobody and **no amount of DNS or Vercel configuration will help**.
+
+Check it:
+
+```bash
+whois jsbattle.in | grep -i "domain status"
+dig +short jsbattle.in @1.1.1.1     # empty output = not in DNS at all
+```
+
+If you see `clientHold`, fix that before anything else: GoDaddy → the domain →
+the yellow "pending WHOIS verification" banner → **Validate**, then click the
+link in the email GoDaddy sends to the registrant address. The hold usually
+lifts within minutes, sometimes a couple of hours.
+
+Two things worth knowing:
+
+- The verification email goes to the **registrant email on the domain**, not
+  your GoDaddy login email. If they differ, check that inbox and its spam
+  folder, or update the registrant contact first.
+- While on hold, `whois` shows the nameservers as `NS1..4.REGISTRY.IN` — the
+  registry's own parking servers. That is a symptom, not something to fix; they
+  are replaced once you set real nameservers after the hold clears.
+
+Only once `dig +short jsbattle.in` returns an address is it worth debugging
+Vercel or Cloudflare.
+
 ## 1. Deploy to Vercel (3 clicks, no CLI)
 
 1. Go to **https://vercel.com/new**, sign in with GitHub.
@@ -38,15 +68,36 @@ Vercel project → **Settings** → **Domains** → add `jsbattle.in`, then add
 `www.jsbattle.in`.
 
 Vercel will show you the exact DNS records it wants. **Use the values Vercel
-shows you**, not the ones below — they occasionally differ per project. At the
-time of writing they are:
+shows you** — they differ per project and Vercel is currently expanding its IP
+range. For this project it is:
 
 | Type | Name | Value |
 | --- | --- | --- |
-| `A` | `@` | `76.76.21.21` |
+| `A` | `@` | `216.198.79.1` |
 | `CNAME` | `www` | `cname.vercel-dns.com` |
 
 Add those in **Cloudflare → DNS → Records**.
+
+> `76.76.21.21` is the older Vercel IP. It still works, but use the value shown
+> in your dashboard.
+
+### ⚠️ Do not let both hosts redirect to each other
+
+In Vercel → **Settings → Domains**, only **one** of `jsbattle.in` and
+`www.jsbattle.in` may carry a redirect, and it must point at the other one.
+
+If `jsbattle.in` is set to redirect to `www.jsbattle.in` **while** `vercel.json`
+redirects `www` back to the apex, the two rules chase each other and every
+request ends in `ERR_TOO_MANY_REDIRECTS`.
+
+This project treats the **apex (`jsbattle.in`) as canonical** — that is what the
+`canonical` and Open Graph tags in `index.html` point at. So:
+
+- `jsbattle.in` → **No Redirect** (this is the one that serves the site)
+- `www.jsbattle.in` → **Redirect to `jsbattle.in`**, 308
+
+If Vercel added an apex → www redirect for you when you attached the domains,
+click **Edit** on `jsbattle.in` and remove it.
 
 > **Set the proxy status to "DNS only" (grey cloud) for now.** Vercel has to
 > reach your domain directly to issue its TLS certificate, and a proxied record
@@ -113,7 +164,8 @@ curl -sI https://www.jsbattle.in | head -3
 
 | Symptom | Cause |
 | --- | --- |
-| `ERR_TOO_MANY_REDIRECTS` | Cloudflare SSL mode is **Flexible**. Set **Full (strict)**. |
+| Vercel says **Invalid Configuration** and `dig` returns nothing | The domain is on `clientHold` — see step 0. Nothing downstream can work until it clears. |
+| `ERR_TOO_MANY_REDIRECTS` | Either Cloudflare SSL mode is **Flexible** (set **Full (strict)**), or the apex and `www` are redirecting to each other — see step 3. |
 | Vercel domain stuck "Invalid Configuration" | Record is Proxied. Set it to **DNS only** until the certificate issues. |
 | Site loads but every level is broken | A frame-blocking header got set to `DENY`. It must be `SAMEORIGIN` — the app frames its own `sandbox.html` to run player code. |
 | Still shows the old GitHub Pages site | Browser or Cloudflare cache. Purge in Cloudflare → **Caching** → **Purge Everything**. |
