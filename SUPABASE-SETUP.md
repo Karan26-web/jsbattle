@@ -75,8 +75,8 @@ Left sidebar → **Authentication** → **URL Configuration**.
 
 | Field | Value |
 | --- | --- |
-| Site URL | `https://karan26-web.github.io/jsbattle/` |
-| Redirect URLs | add `https://karan26-web.github.io/jsbattle/` |
+| Site URL | `https://jsbattle.in/` |
+| Redirect URLs | add `https://jsbattle.in/` |
 
 Password reset and confirmation links will not work until this is set —
 Supabase refuses to redirect to an origin that is not on this list.
