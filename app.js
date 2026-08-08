@@ -701,9 +701,7 @@ function renderLevelSelect() {
 // ----------------------------------------------------------------------------
 const AUTHOR = {
   name: "Karan Kumar",
-  role: "Game Developer &amp; Web Developer",
   current: "GameDev at Convegenius",
-  school: "IIT Madras",
   location: "Noida, India",
   portfolio: "https://karan26.vercel.app/",
   github: "https://github.com/Karan26-web",
@@ -714,16 +712,19 @@ const AUTHOR = {
 function renderAbout() {
   const focus = [
     {
-      title: "Product Analytics",
-      body: "Tracking KPIs, mapping user funnels, and using engagement data to drive product decisions and feature prioritisation."
+      title: "Game Development",
+      body: "Designing game loops for learning modules — tuning difficulty progression and reading player analytics to find where people actually drop off. Shipped Byte Saves The Day, Save The Parade and Power Up Bots.",
+      stack: ["JavaScript", "Canvas 2D", "Game Loops", "HTML", "CSS"]
     },
     {
-      title: "Data Analysis",
-      body: "Python, SQL and Pandas — turning raw data into dashboards, insights, and business intelligence that teams can act on."
+      title: "Web Development",
+      body: "Full-stack builds end to end. WanderLust runs on Node, Express and MongoDB Atlas with real auth and image handling; Lattice Finance is a React dashboard with role-based access and live spending insights.",
+      stack: ["Node.js", "Express", "MongoDB", "React", "Tailwind"]
     },
     {
       title: "AI &amp; LLM Integration",
-      body: "Prompt engineering, LLM API integration, and AI-powered product design — building experiences that are natively intelligent."
+      body: "Prompt engineering and LLM API work aimed at product outcomes — including using AI for game design and balancing rather than as a bolt-on feature.",
+      stack: ["LLM APIs", "Prompt Engineering", "Python", "Pandas"]
     }
   ];
 
@@ -734,8 +735,8 @@ function renderAbout() {
         <div>
           <div class="section-label" style="margin-bottom:8px">About the author</div>
           <h2>${AUTHOR.name}</h2>
-          <p class="about-role">${AUTHOR.role} · ${escapeHtml(AUTHOR.school)}</p>
-          <p class="about-meta">${AUTHOR.current} · ${AUTHOR.location}</p>
+          <p class="about-role">${AUTHOR.current}</p>
+          <p class="about-meta">${AUTHOR.location}</p>
           <div class="about-links">
             <a class="btn ghost sm" href="${AUTHOR.portfolio}" target="_blank" rel="noopener noreferrer">Portfolio</a>
             <a class="btn ghost sm" href="${AUTHOR.github}" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -746,15 +747,22 @@ function renderAbout() {
       </div>
 
       <p class="about-bio">
-        IIT Madras. Game developer and web developer building AI-powered learning experiences at
-        Convegenius — where analytical rigor meets product intuition. Previously a Product
-        Designer at Cosmic Sole, and Secretary of the Nebula Pioneers Space Club at IIT Madras.
+        Builds AI-powered learning experiences at Convegenius — designing game loops for learning
+        modules and using player analytics to tune engagement and difficulty. Previously a Product
+        Designer at Cosmic Sole, and Secretary of the Nebula Pioneers Space Club.
       </p>
 
       <div class="section-label">What I work on</div>
       <div class="about-grid">
         ${focus
-          .map((f) => `<div class="about-card"><h3>${f.title}</h3><p>${f.body}</p></div>`)
+          .map(
+            (f) => `
+          <div class="about-card">
+            <h3>${f.title}</h3>
+            <p>${f.body}</p>
+            <p class="about-stack">${f.stack.map((s) => `<span>${s}</span>`).join("")}</p>
+          </div>`
+          )
           .join("")}
       </div>
 

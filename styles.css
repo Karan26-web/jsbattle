@@ -408,8 +408,11 @@ canvas { width: 400px; max-width: 100%; height: auto; }
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 18px;
 }
+.about-card { display: flex; flex-direction: column; }
 .about-card h3 { font-size: 15px; margin-bottom: 8px; color: var(--cyan); }
 .about-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.about-card .about-stack { margin-top: auto; padding-top: 14px; }
+.about-card .about-stack span { font-size: 10px; padding: 3px 8px; }
 .about-panel {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 24px; max-width: 760px;
