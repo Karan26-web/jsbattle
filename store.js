@@ -354,6 +354,15 @@ const SupabaseBackend = {
 // ----------------------------------------------------------------------------
 let Store = window.JSBATTLE_CONFIG.isConfigured ? SupabaseBackend : LocalBackend;
 
+// The setup instruction belongs in the console, where a developer will look —
+// not in a modal a player reads. Players just see "saved in this browser".
+if (!window.JSBATTLE_CONFIG.isConfigured) {
+  console.info(
+    "[jsbattle] Running on localStorage. Add your Supabase URL and anon key to " +
+      "config.js for real accounts and a global leaderboard — see SUPABASE-SETUP.md."
+  );
+}
+
 const storeReady = (async () => {
   try {
     await Store.init();

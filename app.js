@@ -222,6 +222,66 @@ function comparePixels(a, b, bg) {
 }
 
 // ----------------------------------------------------------------------------
+// Palette extraction
+//
+// Pixel matching needs exact colours, so leaving a player to guess #ff5470 is
+// unfair. The palette is read back out of the *rendered* target rather than
+// hand-listed per level, so it can never drift out of sync with drawTarget.
+//
+// Anti-aliased edges produce hundreds of near-duplicate shades, so colours
+// within MERGE_TOLERANCE of an already-picked (more common) colour are folded
+// into it. `covered` reports how much of the canvas the returned swatches
+// account for, which is how gradients get detected: a vertical gradient is
+// hundreds of one-row colours and will report low coverage.
+// ----------------------------------------------------------------------------
+const MERGE_TOLERANCE = 30;
+
+function extractPalette(frames, { max = 8, minShare = 0.004 } = {}) {
+  const counts = new Map();
+  let total = 0;
+  for (const px of frames) {
+    for (let i = 0; i < px.length; i += 4) {
+      const key = ((px[i] << 24) | (px[i + 1] << 16) | (px[i + 2] << 8) | px[i + 3]) >>> 0;
+      counts.set(key, (counts.get(key) || 0) + 1);
+      total++;
+    }
+  }
+  if (!total) return { colors: [], covered: 0 };
+
+  const unpack = (k) => [(k >>> 24) & 255, (k >>> 16) & 255, (k >>> 8) & 255, k & 255];
+  const near = (a, b) =>
+    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) + Math.abs(a[3] - b[3]) <
+    MERGE_TOLERANCE;
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const picked = [];
+  for (const [key, n] of sorted) {
+    if (picked.length >= max) break;
+    if (n / total < minShare) break;
+    const rgba = unpack(key);
+    if (picked.some((p) => near(p.rgba, rgba))) continue;
+    picked.push({ rgba, share: n / total });
+  }
+
+  // Coverage counts every shade that merges into a swatch, not just exact hits.
+  let coveredCount = 0;
+  for (const [key, n] of counts) {
+    const rgba = unpack(key);
+    if (picked.some((p) => near(p.rgba, rgba))) coveredCount += n;
+  }
+
+  return { colors: picked, covered: coveredCount / total };
+}
+
+function cssColor([r, g, b, a]) {
+  if (a === 0) return "transparent";
+  if (a === 255) {
+    return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+  return `rgba(${r},${g},${b},${+(a / 255).toFixed(3)})`;
+}
+
+// ----------------------------------------------------------------------------
 // Small DOM helpers
 // ----------------------------------------------------------------------------
 const app = document.getElementById("app");
@@ -406,8 +466,8 @@ function openAuthModal() {
           : `
         <h3>Pick a display name</h3>
         <p class="modal-note" style="margin-top:6px">
-          No backend is configured, so scores are saved in this browser only.
-          Add your Supabase keys to <code>config.js</code> for real accounts and a global leaderboard.
+          Your progress is saved in this browser. Pick a name and start playing —
+          accounts and the global leaderboard are coming soon.
         </p>
         <form id="auth-form">
           <label>Display name<input type="text" name="username" maxlength="24" required /></label>
@@ -1131,6 +1191,10 @@ function renderPlay(level) {
     theme: "dracula",
     lineNumbers: true,
     tabSize: 2,
+    // Typing ( [ { " ' inserts the closing half and puts the caret between
+    // them; typing the closer yourself types through it rather than doubling.
+    autoCloseBrackets: true,
+    matchBrackets: true,
     // Golfed answers are frequently one very long line; without wrapping the
     // player is typing off the right edge of a pane they cannot widen.
     lineWrapping: true,
@@ -1268,13 +1332,70 @@ async function loadLevelBoard(level) {
 }
 
 // ----------------------------------------------------------------------------
+// Spec strip — the exact canvas size and palette, always visible under the
+// target. Swatches copy their value on click.
+// ----------------------------------------------------------------------------
+function renderSpec(frames) {
+  const { colors, covered } = extractPalette(frames);
+  const host = document.getElementById("spec-slot");
+  if (!host) return;
+
+  // The most common colour is only the "background" when it actually dominates.
+  // On a gradient nothing does, and the top slot goes to whatever solid shape
+  // happens to be biggest — labelling that "bg" would actively mislead.
+  const hasFlatBg = colors.length > 0 && colors[0].share >= 0.35;
+  const isBlended = !hasFlatBg || covered < 0.97;
+
+  host.innerHTML = `
+    <div class="spec">
+      <div class="spec-row">
+        <span class="spec-label">Canvas</span>
+        <code>${CANVAS_SIZE.w} × ${CANVAS_SIZE.h}</code>
+      </div>
+      <div class="spec-row">
+        <span class="spec-label">Palette</span>
+        <div class="swatches">
+          ${colors
+            .map((c, i) => {
+              const val = cssColor(c.rgba);
+              const pct = Math.round(c.share * 100);
+              return `<button class="swatch" data-value="${escapeHtml(val)}" title="Copy ${escapeHtml(val)} — ${pct}% of the canvas">
+                        <i style="background:${val}"></i><span>${escapeHtml(val)}</span>
+                        ${i === 0 && hasFlatBg ? `<em>bg</em>` : ""}
+                      </button>`;
+            })
+            .join("")}
+        </div>
+      </div>
+      ${
+        isBlended
+          ? `<p class="spec-note">Dominant colours only — this target blends shades (a gradient, or shapes drawn with alpha), so it uses more than the swatches above.</p>`
+          : ""
+      }
+    </div>`;
+
+  host.querySelectorAll(".swatch").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const value = btn.dataset.value;
+      try {
+        await navigator.clipboard.writeText(value);
+        toast(`Copied ${value}`, "success");
+      } catch (e) {
+        toast(value); // clipboard blocked — at least surface the value
+      }
+    })
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Visual level wiring
 // ----------------------------------------------------------------------------
 function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
   document.getElementById("left-pane-body").innerHTML = `
     <div class="target-canvas-wrap">
       <canvas id="target-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
-    </div>`;
+    </div>
+    <div id="spec-slot"></div>`;
   document.getElementById("right-pane-body").innerHTML = `
     <div class="preview-canvas-wrap">
       <canvas id="preview-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
@@ -1284,6 +1405,7 @@ function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
   level.drawTarget(targetCtx);
   const targetPixels = targetCtx.getImageData(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h).data;
   const targetBg = modalColor(targetPixels);
+  renderSpec([targetPixels]);
 
   const previewCtx = document.getElementById("preview-canvas").getContext("2d");
 
@@ -1335,7 +1457,8 @@ function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
   document.getElementById("left-pane-body").innerHTML = `
     <div class="target-canvas-wrap">
       <canvas id="target-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
-    </div>`;
+    </div>
+    <div id="spec-slot"></div>`;
   document.getElementById("right-pane-body").innerHTML = `
     <div class="preview-canvas-wrap">
       <canvas id="preview-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
@@ -1357,6 +1480,7 @@ function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
   });
   // Per frame, since a level is free to animate its background too.
   const targetBgs = targetFrames.map(modalColor);
+  renderSpec(targetFrames);
 
   let playerFrames = null; // ImageData[] from the most recent successful run
   let rafId = null;

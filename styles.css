@@ -310,7 +310,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-vis
    pixel-matching game makes the target look softer than what is scored. */
 canvas { width: 400px; max-width: 100%; height: auto; }
 
+/* ---------- Spec strip (canvas size + palette) ---------- */
+.spec { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.spec-row { display: flex; align-items: flex-start; gap: 12px; }
+.spec-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); padding-top: 6px; min-width: 54px; flex-shrink: 0;
+}
+.spec-row code {
+  font-size: 12px; color: var(--text); background: var(--panel-alt);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 9px;
+}
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--panel-alt); border: 1px solid var(--border); border-radius: 5px;
+  padding: 4px 9px 4px 5px; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.swatch:hover { border-color: var(--cyan); }
+.swatch i {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  /* Chequerboard shows through for transparent swatches. */
+  background-image: linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%),
+                    linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+}
+.swatch em {
+  font-style: normal; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); border-left: 1px solid var(--border); padding-left: 6px;
+}
+.spec-note { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0; }
+
 .editor-wrap { border-top: 1px solid var(--border); }
+/* Bracket matching from the CodeMirror addon. */
+.CodeMirror-matchingbracket { color: var(--cyan) !important; font-weight: 700; }
+.CodeMirror-nonmatchingbracket { color: var(--red) !important; }
 .CodeMirror { height: 280px; font-size: 13px; background: #0f0e19 !important; }
 
 .golf-tests { display: flex; flex-direction: column; gap: 8px; }

@@ -220,6 +220,15 @@ filter bar without touching `app.js`.
 > machines and browsers, so a target containing real text can never be matched
 > reliably. The UI levels represent labels as bars, the way a wireframe does.
 
+You do not list the colours anywhere. Every canvas level shows a **spec strip**
+under the target with the canvas size and the palette, and that palette is read
+back out of the *rendered* target rather than declared on the level — so it
+cannot drift out of sync with `drawTarget`. Anti-aliased shades are merged into
+the dominant colour they came from, swatches copy on click, and the top swatch
+is only labelled `bg` when one colour actually dominates the canvas. Targets
+that blend (a gradient, or shapes drawn with alpha) say so instead of implying
+the handful of swatches is the whole story.
+
 ## Deploying to your own domain
 
 JSBattle is **pure static files** — no Node runtime, no build step, no server.
