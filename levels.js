@@ -762,12 +762,36 @@ const UI_LEVELS = [
 // pixel match across all of them, which means the whole motion has to be
 // right rather than one convenient pose.
 // ============================================================================
-const ANIM_FRAMES = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
+// Preview and scoring run at different cadences on purpose.
+//
+// Scoring needs few frames — six fixed samples keep a run cheap and make the
+// result reproducible. But playing those same six back as the preview is a
+// 2.5fps slideshow sitting next to a 60fps target, which reads as "my code is
+// broken" when it is not. So the worker renders ANIM_PREVIEW_FRAMES for
+// playback and only every ANIM_SCORE_EVERY-th one is measured.
+//
+// 36 frames over a 1500ms loop is 24fps. The scored subset works out to
+// exactly [0, 1/6, 2/6, 3/6, 4/6, 5/6] — unchanged, so difficulty is unchanged.
+const ANIM_PREVIEW_FRAMES = 36;
+const ANIM_SCORE_EVERY = 6;
+const ANIM_PREVIEW_TIMES = Array.from(
+  { length: ANIM_PREVIEW_FRAMES },
+  (_, i) => i / ANIM_PREVIEW_FRAMES
+);
+const ANIM_SCORE_INDICES = ANIM_PREVIEW_TIMES.map((_, i) => i).filter(
+  (i) => i % ANIM_SCORE_EVERY === 0
+);
+const ANIM_FRAMES = ANIM_SCORE_INDICES.map((i) => ANIM_PREVIEW_TIMES[i]);
 
 const ANIM_STARTER =
   "function render(ctx, t) {\n" +
-  "  // ctx is a 400x300 CanvasRenderingContext2D.\n" +
-  "  // t goes from 0 to 1 and then loops. Draw one frame.\n" +
+  "  // JSBattle calls this once per frame and owns the clock, so you do NOT\n" +
+  "  // need requestAnimationFrame, setInterval, or any timing code yourself.\n" +
+  "  //\n" +
+  "  //   ctx  a 400x300 CanvasRenderingContext2D, cleared before every call\n" +
+  "  //   t    where you are in the loop: 0 at the start, rising towards 1\n" +
+  "  //\n" +
+  "  // Draw the single frame for this value of t.\n" +
   "}\n";
 
 const ANIM_LEVELS = [

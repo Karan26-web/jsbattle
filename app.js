@@ -130,8 +130,8 @@ class SandboxRunner {
     return this._run({ type: "run-visual", code, size });
   }
 
-  runAnim(code, size, times) {
-    return this._run({ type: "run-anim", code, size, times });
+  runAnim(code, size, times, scoreIndices) {
+    return this._run({ type: "run-anim", code, size, times, scoreIndices });
   }
 
   runGolf(code, testCases) {
@@ -1451,7 +1451,8 @@ function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
 // Playback is cosmetic: the target is redrawn live from trusted code, and the
 // player's canvas cycles the frames their run actually produced.
 // ----------------------------------------------------------------------------
-const ANIM_LOOP_MS = 2400;
+// 36 preview frames over 1500ms = 24fps.
+const ANIM_LOOP_MS = 1500;
 
 function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
   document.getElementById("left-pane-body").innerHTML = `
@@ -1482,29 +1483,52 @@ function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
   const targetBgs = targetFrames.map(modalColor);
   renderSpec(targetFrames);
 
-  let playerFrames = null; // ImageData[] from the most recent successful run
+  let playerFrames = null; // ImageBitmap[] (preferred) or ImageData[] fallback
   let rafId = null;
 
+  // ImageBitmaps hold GPU memory until closed. Re-running on every keystroke
+  // would leak a full set each time otherwise.
+  function releaseFrames(frames) {
+    if (!frames) return;
+    for (const f of frames) if (f && typeof f.close === "function") f.close();
+  }
+
   function tick(now) {
-    const t = (now % ANIM_LOOP_MS) / ANIM_LOOP_MS;
+    // Quantise to the preview cadence and drive BOTH canvases from the same
+    // index. Rendering the target live at 60fps beside a stepped preview makes
+    // a correct answer look worse than it is; in lockstep they are comparable.
+    const phase = (now % ANIM_LOOP_MS) / ANIM_LOOP_MS;
+    const idx = Math.floor(phase * ANIM_PREVIEW_FRAMES) % ANIM_PREVIEW_FRAMES;
 
     targetCtx.setTransform(1, 0, 0, 1, 0, 0);
     targetCtx.clearRect(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h);
-    level.drawTarget(targetCtx, t);
+    level.drawTarget(targetCtx, ANIM_PREVIEW_TIMES[idx]);
 
-    if (playerFrames) {
-      const i = Math.min(playerFrames.length - 1, Math.floor(t * playerFrames.length));
-      previewCtx.putImageData(playerFrames[i], 0, 0);
+    if (playerFrames && playerFrames.length) {
+      // Derived from phase, not from idx: on the no-ImageBitmap fallback there
+      // are only 6 frames, and clamping to idx would freeze on the last one.
+      const pi = Math.floor(phase * playerFrames.length) % playerFrames.length;
+      const f = playerFrames[pi];
+      previewCtx.clearRect(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h);
+      if (typeof ImageData !== "undefined" && f instanceof ImageData) {
+        previewCtx.putImageData(f, 0, 0);
+      } else {
+        previewCtx.drawImage(f, 0, 0);
+      }
     }
     rafId = requestAnimationFrame(tick);
   }
   rafId = requestAnimationFrame(tick);
-  onPageTeardown(() => cancelAnimationFrame(rafId));
+  onPageTeardown(() => {
+    cancelAnimationFrame(rafId);
+    releaseFrames(playerFrames);
+    playerFrames = null;
+  });
 
   async function execute() {
     setError(null);
     const code = editor.getValue();
-    const res = await runner.runAnim(code, CANVAS_SIZE, ANIM_FRAMES);
+    const res = await runner.runAnim(code, CANVAS_SIZE, ANIM_PREVIEW_TIMES, ANIM_SCORE_INDICES);
 
     if (res.type === "superseded") return;
     if (res.type === "timeout" || res.type === "fatal-error" || !res.ok) {
@@ -1513,11 +1537,16 @@ function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
       return;
     }
 
-    const frames = res.frames.map((buf) => new Uint8ClampedArray(buf));
-    const pcts = frames.map((f, i) => comparePixels(targetFrames[i], f, targetBgs[i]));
+    // Scoring uses only the measured subset — semantics unchanged.
+    const scored = res.frames.map((buf) => new Uint8ClampedArray(buf));
+    const pcts = scored.map((f, i) => comparePixels(targetFrames[i], f, targetBgs[i]));
     const mean = pcts.reduce((a, b) => a + b, 0) / pcts.length;
 
-    playerFrames = frames.map((f) => new ImageData(f, res.width, res.height));
+    releaseFrames(playerFrames);
+    playerFrames =
+      res.bitmaps && res.bitmaps.length
+        ? res.bitmaps
+        : scored.map((f) => new ImageData(f, res.width, res.height));
 
     const charCount = code.length;
     setResult(

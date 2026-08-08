@@ -86,13 +86,26 @@ background colour there, and background-on-background agreement is worth 0.05.
 The same submissions now score **12** and **559** against 958 for a correct one.
 Weighting both sides also penalises painting extra ink where the target has none.
 
-**Animation** — `render(ctx, t)` is called with `t` running 0→1. The value comes
-from the harness and is never read from a clock, so a run is reproducible.
-Scoring samples six fixed values of `t` and averages the match across all of
-them, so the whole motion has to be right rather than one convenient pose: a
-correct shape at the wrong phase, at half speed, or orbiting backwards all fail.
-Playback is cosmetic — the target is redrawn live from trusted code while the
-player's canvas cycles the frames their run actually produced.
+**Animation** — `render(ctx, t)` is called with `t` running 0→1. The harness
+owns the clock and calls the function once per frame, so player code needs no
+`requestAnimationFrame` and no timing logic of its own; that is what makes a run
+reproducible. Scoring samples six fixed values of `t` and averages the match
+across all of them, so the whole motion has to be right rather than one
+convenient pose: a correct shape at the wrong phase, at half speed, or orbiting
+backwards all fail.
+
+Preview and scoring run at deliberately different cadences. Six frames is plenty
+to score but far too few to *watch* — replaying those six was a 2.5fps slideshow
+sitting next to a 60fps target, which reads as "my code is broken" when it is
+not. The worker now renders **36 frames** for playback and measures every sixth,
+which works out to exactly the same six values of `t` as before, so difficulty
+is unchanged. Playback frames come back as `ImageBitmap`s — GPU-backed and
+transferable, so 36 of them cost far less than 36 `ImageData` buffers, and they
+are explicitly `close()`d when replaced.
+
+Both canvases step through the same quantised frame index at 24fps. Rendering
+the target live at 60fps beside a stepped preview made a *correct* answer look
+worse than it was; in lockstep they are directly comparable.
 
 ```
 100% at par     950      97%  at par   851      75% at par   207
