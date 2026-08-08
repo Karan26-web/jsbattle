@@ -5,12 +5,6 @@
   "outputDirectory": ".",
   "trailingSlash": false,
   "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.jsbattle.in" }],
-      "destination": "https://jsbattle.in/:path*",
-      "permanent": true
-    }
   ],
   "headers": [
     {
