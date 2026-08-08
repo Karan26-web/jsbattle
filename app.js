@@ -629,8 +629,8 @@ function renderLevelSelect() {
 // ----------------------------------------------------------------------------
 const AUTHOR = {
   name: "Karan Kumar",
-  role: "Product & Data Analyst",
-  current: "Game Design & Product Analyst at Convegenius",
+  role: "Game Developer &amp; Web Developer",
+  current: "Game Design &amp; Product Analyst at Convegenius",
   school: "IIT Madras",
   location: "Noida, India",
   portfolio: "https://karan26.vercel.app/",
@@ -674,7 +674,7 @@ function renderAbout() {
       </div>
 
       <p class="about-bio">
-        IIT Madras. Product &amp; Data Analyst building AI-powered learning experiences at
+        IIT Madras. Game developer and web developer building AI-powered learning experiences at
         Convegenius — where analytical rigor meets product intuition. Previously a Product
         Designer at Cosmic Sole, and Secretary of the Nebula Pioneers Space Club at IIT Madras.
       </p>
