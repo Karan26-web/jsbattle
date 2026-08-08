@@ -322,9 +322,13 @@ const SupabaseBackend = {
   },
 
   async getGlobalLeaderboard(limit = 25) {
+    // Accounts that signed up but never scored sit at 0 XP and would otherwise
+    // fill the board. Ranks are computed in the view before this filter, so
+    // hiding them does not renumber anybody who has actually played.
     const { data, error } = await this._sb
       .from("global_rankings")
       .select("username, user_id, total_xp, levels_played, rank")
+      .gt("total_xp", 0)
       .order("rank", { ascending: true })
       .limit(limit);
     if (error) throw new Error(error.message);

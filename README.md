@@ -142,9 +142,14 @@ What the schema gives you:
   leaderboards without an account.
 - RLS: everything world-readable, only ever writable by its owner.
 
-> The SQL has been written and reviewed carefully but **not executed against a
-> live Postgres** — there was no database available in this environment. Run it
-> once in the SQL Editor and check for errors before relying on it.
+> The schema is **verified against real PostgreSQL 18**: it applies cleanly and
+> is re-runnable; the signup trigger resolves username collisions
+> (`karan`, `karan1`, `karan2`) and sanitises empty or symbol-only names to
+> `player`; `submit_score` improves a best but refuses to lower one (submitting
+> 400 over a stored 950 leaves 950 intact) and always keeps exactly one row per
+> player+level; out-of-range and unauthenticated writes are rejected; both
+> ranking views order correctly with `security_invoker` on; and RLS is enabled
+> with all five policies plus the CHECK and UNIQUE constraints holding.
 
 ## Known limitations
 
