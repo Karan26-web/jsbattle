@@ -210,6 +210,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-vis
 .level-card .type-tag { position: absolute; top: 14px; right: 14px; }
 .type-tag.visual { background: rgba(94, 234, 212, 0.15); color: var(--cyan); }
 .type-tag.golf { background: rgba(245, 166, 35, 0.15); color: var(--amber); }
+.type-tag.ui { background: rgba(165, 180, 252, 0.15); color: var(--violet); }
+.type-tag.anim { background: rgba(255, 84, 112, 0.15); color: var(--red); }
 .level-card h3 { font-size: 17px; padding-right: 76px; }
 .level-card p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
 

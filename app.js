@@ -57,7 +57,12 @@ class SandboxRunner {
       return;
     }
     if (!this.pending) return;
-    if (data.type === "visual-result" || data.type === "golf-result" || data.type === "fatal-error") {
+    if (
+      data.type === "visual-result" ||
+      data.type === "anim-result" ||
+      data.type === "golf-result" ||
+      data.type === "fatal-error"
+    ) {
       clearTimeout(this.pending.timer);
       const resolve = this.pending.resolve;
       this.pending = null;
@@ -125,6 +130,10 @@ class SandboxRunner {
     return this._run({ type: "run-visual", code, size });
   }
 
+  runAnim(code, size, times) {
+    return this._run({ type: "run-anim", code, size, times });
+  }
+
   runGolf(code, testCases) {
     return this._run({ type: "run-golf", code, testCases });
   }
@@ -151,20 +160,65 @@ class SandboxRunner {
 
 // ----------------------------------------------------------------------------
 // Pixel comparison
+//
+// A flat "what fraction of pixels match" is a bad metric here, because on most
+// levels the background IS most of the canvas. On the orbit level the moving
+// moon is ~0.5% of 120,000 pixels, so a submission that painted the background
+// and nothing else measured 97% and scored 903 of a possible 1000 — and code
+// that ignored `t` completely was within 13 points of a correct animation.
+//
+// So pixels are weighted. A pixel counts fully whenever the target or the
+// player's output has something other than the background colour there;
+// background-on-background agreement is worth BG_WEIGHT. Filling in the easy
+// part therefore earns almost nothing, and the drawing is what is actually
+// being scored. Weighting both sides also penalises painting extra ink where
+// the target has none.
 // ----------------------------------------------------------------------------
-function comparePixels(a, b) {
-  if (!a || !b || a.length !== b.length) return 0;
-  let matching = 0;
-  const totalPixels = a.length / 4;
-  for (let i = 0; i < a.length; i += 4) {
-    const dr = Math.abs(a[i] - b[i]);
-    const dg = Math.abs(a[i + 1] - b[i + 1]);
-    const db = Math.abs(a[i + 2] - b[i + 2]);
-    const da = Math.abs(a[i + 3] - b[i + 3]);
-    // Small tolerance for anti-aliasing differences.
-    if (dr + dg + db + da < 40) matching++;
+const COLOR_TOLERANCE = 40; // small allowance for anti-aliasing differences
+const BG_WEIGHT = 0.05;
+
+// The background is simply the most common colour in the target.
+function modalColor(px) {
+  const counts = new Map();
+  let bestCount = 0;
+  let bestKey = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const key = ((px[i] << 24) | (px[i + 1] << 16) | (px[i + 2] << 8) | px[i + 3]) >>> 0;
+    const n = (counts.get(key) || 0) + 1;
+    counts.set(key, n);
+    if (n > bestCount) {
+      bestCount = n;
+      bestKey = key;
+    }
   }
-  return (matching / totalPixels) * 100;
+  return [(bestKey >>> 24) & 255, (bestKey >>> 16) & 255, (bestKey >>> 8) & 255, bestKey & 255];
+}
+
+function comparePixels(a, b, bg) {
+  if (!a || !b || a.length !== b.length) return 0;
+  const [br, bgc, bb, ba] = bg || [0, 0, 0, 0];
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    const matched =
+      Math.abs(a[i] - b[i]) +
+        Math.abs(a[i + 1] - b[i + 1]) +
+        Math.abs(a[i + 2] - b[i + 2]) +
+        Math.abs(a[i + 3] - b[i + 3]) <
+      COLOR_TOLERANCE;
+
+    const aIsBg =
+      Math.abs(a[i] - br) + Math.abs(a[i + 1] - bgc) + Math.abs(a[i + 2] - bb) + Math.abs(a[i + 3] - ba) <
+      COLOR_TOLERANCE;
+    const bIsBg =
+      Math.abs(b[i] - br) + Math.abs(b[i + 1] - bgc) + Math.abs(b[i + 2] - bb) + Math.abs(b[i + 3] - ba) <
+      COLOR_TOLERANCE;
+
+    const w = aIsBg && bIsBg ? BG_WEIGHT : 1;
+    den += w;
+    if (matched) num += w;
+  }
+  return den ? (num / den) * 100 : 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -478,7 +532,24 @@ function openAuthModal() {
 // ----------------------------------------------------------------------------
 let currentRunner = null;
 
+// Animation levels drive a requestAnimationFrame loop. Without an explicit
+// teardown it would keep running against a canvas the router has replaced,
+// burning a frame callback per navigation for the rest of the session.
+let pageCleanups = [];
+function onPageTeardown(fn) {
+  pageCleanups.push(fn);
+}
+
 async function route() {
+  pageCleanups.forEach((fn) => {
+    try {
+      fn();
+    } catch (e) {
+      /* teardown must never block navigation */
+    }
+  });
+  pageCleanups = [];
+
   if (currentRunner) {
     currentRunner.destroy();
     currentRunner = null;
@@ -522,7 +593,7 @@ function levelCard(level) {
   const medal = best ? medalFor(best.score) : null;
   return `
     <a class="level-card ${best ? "played" : ""}" href="#/play/${level.slug}">
-      <span class="type-tag ${level.type}">${level.type === "visual" ? "Visual" : "Code-Golf"}</span>
+      <span class="type-tag ${level.type}">${TYPE_META[level.type].tag}</span>
       ${medal ? `<span class="medal ${medal.key}" title="${medal.label} — ${best.score} XP"></span>` : ""}
       <h3>${escapeHtml(level.title)}</h3>
       <p>${escapeHtml(level.description)}</p>
@@ -543,8 +614,11 @@ function renderLevelSelect() {
     activeFilter === "all" ||
     (activeFilter === "todo" ? !myScores[l.slug] : l.type === activeFilter);
 
-  const visual = VISUAL_LEVELS.filter(matches);
-  const golf = GOLF_LEVELS.filter(matches);
+  // Sections are derived from the registry, so adding a category to levels.js
+  // puts it on this page and in the filter bar with no change here.
+  const sections = LEVEL_GROUPS.map((g) => ({ ...g, shown: g.levels.filter(matches) })).filter(
+    (g) => g.shown.length
+  );
 
   app.innerHTML = `
     <section class="hero">
@@ -588,8 +662,7 @@ function renderLevelSelect() {
       <div class="filter-bar">
         ${[
           ["all", `All ${ALL_LEVELS.length}`],
-          ["visual", `Visual ${VISUAL_LEVELS.length}`],
-          ["golf", `Code-Golf ${GOLF_LEVELS.length}`],
+          ...LEVEL_GROUPS.map((g) => [g.key, `${g.tag} ${g.levels.length}`]),
           ["todo", "Unplayed"]
         ]
           .map(
@@ -599,19 +672,18 @@ function renderLevelSelect() {
           .join("")}
       </div>
 
+      ${sections
+        .map(
+          (g) => `
+        <div class="section-label">${g.label} — ${g.blurb}</div>
+        <div class="level-grid">${g.shown.map(levelCard).join("")}</div>`
+        )
+        .join("")}
       ${
-        visual.length
-          ? `<div class="section-label">Visual Match — recreate the target canvas</div>
-             <div class="level-grid">${visual.map(levelCard).join("")}</div>`
-          : ""
+        sections.length
+          ? ""
+          : `<p class="empty">Nothing here — every level in this filter is done.</p>`
       }
-      ${
-        golf.length
-          ? `<div class="section-label">Code-Golf — pass every test in the fewest characters</div>
-             <div class="level-grid">${golf.map(levelCard).join("")}</div>`
-          : ""
-      }
-      ${!visual.length && !golf.length ? `<p class="empty">Nothing here — every level in this filter is done.</p>` : ""}
     </div>`;
 
   app.querySelectorAll(".filter").forEach((b) =>
@@ -630,7 +702,7 @@ function renderLevelSelect() {
 const AUTHOR = {
   name: "Karan Kumar",
   role: "Game Developer &amp; Web Developer",
-  current: "Game Design &amp; Product Analyst at Convegenius",
+  current: "GameDev at Convegenius",
   school: "IIT Madras",
   location: "Noida, India",
   portfolio: "https://karan26.vercel.app/",
@@ -919,7 +991,7 @@ async function renderProfile() {
               const m = s ? medalFor(s.score) : null;
               return `<tr class="${s ? "" : "dim"}">
                 <td><a href="#/play/${l.slug}">${escapeHtml(l.title)}</a></td>
-                <td>${l.type === "visual" ? "Visual" : "Golf"}</td>
+                <td>${TYPE_META[l.type].tag}</td>
                 <td>${m ? `<span class="medal inline ${m.key}"></span> ${m.label}` : "—"}</td>
                 <td class="num mono">${s ? s.char_count : "—"}</td>
                 <td class="num mono">${s ? s.score : "—"}</td>
@@ -952,7 +1024,9 @@ async function renderProfile() {
 // Play view
 // ----------------------------------------------------------------------------
 function renderPlay(level) {
-  const isVisual = level.type === "visual";
+  // Three engines: a single canvas frame, a sampled animation loop, or tests.
+  const engine = level.type === "golf" ? "golf" : level.type === "anim" ? "anim" : "static";
+  const isCanvas = engine !== "golf";
   const best = myScores[level.slug];
   const idx = ALL_LEVELS.indexOf(level);
   const prev = ALL_LEVELS[idx - 1];
@@ -971,7 +1045,7 @@ function renderPlay(level) {
       </div>
       <div class="play-title">
         <h2>${escapeHtml(level.title)}</h2>
-        <span class="type-tag ${level.type}">${isVisual ? "Visual" : "Code-Golf"}</span>
+        <span class="type-tag ${level.type}">${TYPE_META[level.type].tag}</span>
         <span class="difficulty inline">${difficultyDots(level)}</span>
         ${best ? `<span class="pb">PB <b>${best.score}</b> XP</span>` : ""}
       </div>
@@ -984,12 +1058,14 @@ function renderPlay(level) {
 
     <div class="arena">
       <section class="pane left">
-        <div class="pane-header">${isVisual ? "Target" : "Test cases"}</div>
+        <div class="pane-header">${
+          isCanvas ? (engine === "anim" ? "Target — looping" : "Target") : "Test cases"
+        }</div>
         <div class="pane-body" id="left-pane-body"></div>
       </section>
       <section class="pane right">
         <div class="pane-header">
-          <span>${isVisual ? "Your output" : "Your solve()"}</span>
+          <span>${isCanvas ? "Your output" : "Your solve()"}</span>
           <button class="link-btn" id="reset-btn">Reset code</button>
         </div>
         <div class="pane-body" id="right-pane-body"></div>
@@ -1006,7 +1082,9 @@ function renderPlay(level) {
             <span class="value muted" id="par">${level.par}</span>
           </div>
           <div class="metric">
-            <span class="label">${isVisual ? "Pixel match" : "Tests"}</span>
+            <span class="label">${
+              engine === "anim" ? "Frame match" : engine === "static" ? "Pixel match" : "Tests"
+            }</span>
             <span class="value" id="secondary">—</span>
           </div>
           <div class="metric">
@@ -1095,7 +1173,12 @@ function renderPlay(level) {
   onChange();
 
   const wiring = { setError, setResult, editor, runner, level };
-  const execute = isVisual ? makeVisualExecutor(wiring) : makeGolfExecutor(wiring);
+  const execute =
+    engine === "anim"
+      ? makeAnimExecutor(wiring)
+      : engine === "static"
+        ? makeVisualExecutor(wiring)
+        : makeGolfExecutor(wiring);
 
   document.getElementById("run-btn").addEventListener("click", execute);
 
@@ -1145,10 +1228,10 @@ function renderPlay(level) {
 
   loadLevelBoard(level);
 
-  // Visual levels auto-run so the preview canvas is live from the first
-  // keystroke. Golf levels do not — running the empty starter would greet
-  // the player with a wall of failing tests before they have typed anything.
-  if (isVisual) execute();
+  // Canvas levels auto-run so the preview is live from the first keystroke.
+  // Golf levels do not — running the empty starter would greet the player
+  // with a wall of failing tests before they have typed anything.
+  if (isCanvas) execute();
 }
 
 async function loadLevelBoard(level) {
@@ -1192,6 +1275,7 @@ function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
   const targetCtx = document.getElementById("target-canvas").getContext("2d");
   level.drawTarget(targetCtx);
   const targetPixels = targetCtx.getImageData(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h).data;
+  const targetBg = modalColor(targetPixels);
 
   const previewCtx = document.getElementById("preview-canvas").getContext("2d");
 
@@ -1210,7 +1294,7 @@ function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
     const pixels = new Uint8ClampedArray(res.pixels);
     previewCtx.putImageData(new ImageData(pixels, res.width, res.height), 0, 0);
 
-    const pct = comparePixels(targetPixels, pixels);
+    const pct = comparePixels(targetPixels, pixels, targetBg);
     const charCount = code.length;
     const score = scoreVisual(pct, charCount, level.par);
     setResult({ score, charCount, meta: { pixelMatchPct: Math.round(pct * 10) / 10 } }, `${pct.toFixed(1)}%`);
@@ -1224,6 +1308,104 @@ function makeVisualExecutor({ level, editor, runner, setError, setResult }) {
     setResult(null);
     clearTimeout(debounce);
     debounce = setTimeout(execute, 350);
+  });
+
+  return execute;
+}
+
+// ----------------------------------------------------------------------------
+// Animation level wiring
+//
+// Scoring samples ANIM_FRAMES fixed values of t and averages the pixel match
+// across all of them, so a correct shape in the wrong phase does not pass.
+// Playback is cosmetic: the target is redrawn live from trusted code, and the
+// player's canvas cycles the frames their run actually produced.
+// ----------------------------------------------------------------------------
+const ANIM_LOOP_MS = 2400;
+
+function makeAnimExecutor({ level, editor, runner, setError, setResult }) {
+  document.getElementById("left-pane-body").innerHTML = `
+    <div class="target-canvas-wrap">
+      <canvas id="target-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
+    </div>`;
+  document.getElementById("right-pane-body").innerHTML = `
+    <div class="preview-canvas-wrap">
+      <canvas id="preview-canvas" width="${CANVAS_SIZE.w}" height="${CANVAS_SIZE.h}"></canvas>
+    </div>`;
+
+  const targetCtx = document.getElementById("target-canvas").getContext("2d");
+  const previewCtx = document.getElementById("preview-canvas").getContext("2d");
+
+  // Reference pixels for the sampled instants, drawn by trusted level code.
+  const scratch = document.createElement("canvas");
+  scratch.width = CANVAS_SIZE.w;
+  scratch.height = CANVAS_SIZE.h;
+  const scratchCtx = scratch.getContext("2d");
+  const targetFrames = ANIM_FRAMES.map((t) => {
+    scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+    scratchCtx.clearRect(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h);
+    level.drawTarget(scratchCtx, t);
+    return scratchCtx.getImageData(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h).data;
+  });
+  // Per frame, since a level is free to animate its background too.
+  const targetBgs = targetFrames.map(modalColor);
+
+  let playerFrames = null; // ImageData[] from the most recent successful run
+  let rafId = null;
+
+  function tick(now) {
+    const t = (now % ANIM_LOOP_MS) / ANIM_LOOP_MS;
+
+    targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+    targetCtx.clearRect(0, 0, CANVAS_SIZE.w, CANVAS_SIZE.h);
+    level.drawTarget(targetCtx, t);
+
+    if (playerFrames) {
+      const i = Math.min(playerFrames.length - 1, Math.floor(t * playerFrames.length));
+      previewCtx.putImageData(playerFrames[i], 0, 0);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+  onPageTeardown(() => cancelAnimationFrame(rafId));
+
+  async function execute() {
+    setError(null);
+    const code = editor.getValue();
+    const res = await runner.runAnim(code, CANVAS_SIZE, ANIM_FRAMES);
+
+    if (res.type === "superseded") return;
+    if (res.type === "timeout" || res.type === "fatal-error" || !res.ok) {
+      setError(res.error || "Unknown error.");
+      setResult(null);
+      return;
+    }
+
+    const frames = res.frames.map((buf) => new Uint8ClampedArray(buf));
+    const pcts = frames.map((f, i) => comparePixels(targetFrames[i], f, targetBgs[i]));
+    const mean = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+
+    playerFrames = frames.map((f) => new ImageData(f, res.width, res.height));
+
+    const charCount = code.length;
+    setResult(
+      {
+        score: scoreVisual(mean, charCount, level.par),
+        charCount,
+        meta: {
+          meanMatchPct: Math.round(mean * 10) / 10,
+          worstFramePct: Math.round(Math.min(...pcts) * 10) / 10
+        }
+      },
+      `${mean.toFixed(1)}%`
+    );
+  }
+
+  let debounce = null;
+  editor.on("change", () => {
+    setResult(null);
+    clearTimeout(debounce);
+    debounce = setTimeout(execute, 400);
   });
 
   return execute;

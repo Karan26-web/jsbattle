@@ -548,5 +548,488 @@ const GOLF_LEVELS = [
   }
 ];
 
-const ALL_LEVELS = [...VISUAL_LEVELS, ...GOLF_LEVELS];
+// ============================================================================
+// UI Components — static canvas, same engine as Visual Match.
+//
+// Deliberately no fillText anywhere: font rasterisation differs between
+// machines and browsers, so any target containing real text could never be
+// matched reliably. Labels are represented as bars, the way a wireframe does.
+// ============================================================================
+const UI_LEVELS = [
+  {
+    slug: "ui-progress-bar",
+    type: "ui",
+    title: "Progress Bar",
+    difficulty: 1,
+    par: 200,
+    description: "A track with a filled portion sitting at 65%. Two rectangles.",
+    hint: "Background #131320. Track is #211f35 at (50,140,300,16). Fill is #5eead4, same origin, 195 wide.",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#211f35";
+      ctx.fillRect(50, 140, 300, 16);
+      ctx.fillStyle = "#5eead4";
+      ctx.fillRect(50, 140, 195, 16);
+    }
+  },
+  {
+    slug: "ui-toggle",
+    type: "ui",
+    title: "Toggle Switch",
+    difficulty: 2,
+    par: 265,
+    description: "An enabled toggle: a pill-shaped track with the knob pushed to the right.",
+    hint: "roundRect(140,130,120,60,30) filled #5eead4, then a #0b0b12 circle r=22 at (230,160).",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      ctx.roundRect(140, 130, 120, 60, 30);
+      ctx.fillStyle = "#5eead4";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(230, 160, 22, 0, Math.PI * 2);
+      ctx.fillStyle = "#0b0b12";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "ui-checkbox",
+    type: "ui",
+    title: "Checkbox",
+    difficulty: 2,
+    par: 300,
+    description: "A checked box: a rounded square with a tick stroked through it.",
+    hint: "roundRect(160,110,80,80,14) in #5eead4. Tick path (178,152) -> (194,168) -> (222,132), stroke #0b0b12, lineWidth 10, round cap and join.",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      ctx.roundRect(160, 110, 80, 80, 14);
+      ctx.fillStyle = "#5eead4";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(178, 152);
+      ctx.lineTo(194, 168);
+      ctx.lineTo(222, 132);
+      ctx.strokeStyle = "#0b0b12";
+      ctx.lineWidth = 10;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+  },
+  {
+    slug: "ui-avatar-stack",
+    type: "ui",
+    title: "Avatar Stack",
+    difficulty: 2,
+    par: 300,
+    description:
+      "Four overlapping avatars, each cut out of the one behind it. Draw them left to right.",
+    hint: "For i in 0..3 at x = 130 + i*50, y = 150: a background-coloured circle r=34 first, then the coloured circle r=28. Colours #ff5470, #f5a623, #5eead4, #a5b4fc.",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      const cols = ["#ff5470", "#f5a623", "#5eead4", "#a5b4fc"];
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(130 + i * 50, 150, 34, 0, Math.PI * 2);
+        ctx.fillStyle = "#131320";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(130 + i * 50, 150, 28, 0, Math.PI * 2);
+        ctx.fillStyle = cols[i];
+        ctx.fill();
+      }
+    }
+  },
+  {
+    slug: "ui-skeleton",
+    type: "ui",
+    title: "Skeleton Loader",
+    difficulty: 2,
+    par: 310,
+    description: "A loading placeholder: a circular avatar and three lines of grey text.",
+    hint: "Circle #322f4d r=28 at (90,110). Bars are roundRect at x=140, y = 92/126/158, widths 190/160/110, height 14, radius 7, fill #322f4d.",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#322f4d";
+      ctx.beginPath();
+      ctx.arc(90, 110, 28, 0, Math.PI * 2);
+      ctx.fill();
+      [190, 160, 110].forEach((w, i) => {
+        ctx.beginPath();
+        ctx.roundRect(140, 92 + i * 34, w, 14, 7);
+        ctx.fill();
+      });
+    }
+  },
+  {
+    slug: "ui-slider",
+    type: "ui",
+    title: "Slider",
+    difficulty: 3,
+    par: 330,
+    description: "A range slider filled to 60%, with a round knob sitting at the fill's end.",
+    hint: "Track roundRect(50,144,300,12,6) in #322f4d, fill roundRect(50,144,180,12,6) in #5eead4, then a #edeaf6 circle r=20 at (230,150).",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#322f4d";
+      ctx.beginPath();
+      ctx.roundRect(50, 144, 300, 12, 6);
+      ctx.fill();
+      ctx.fillStyle = "#5eead4";
+      ctx.beginPath();
+      ctx.roundRect(50, 144, 180, 12, 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(230, 150, 20, 0, Math.PI * 2);
+      ctx.fillStyle = "#edeaf6";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "ui-tab-bar",
+    type: "ui",
+    title: "Tab Bar",
+    difficulty: 3,
+    par: 360,
+    description:
+      "Three tabs on a panel. The first is active — brighter label and an underline beneath it.",
+    hint: "Panel #211f35 at (40,110,320,60). Label bars are 56 wide, 10 high, radius 5, at y=135, centred in each 106.67-wide third: x = 40 + i*106.67 + 25. Active label #edeaf6, others #8b87a6. Underline #ff5470 at (40,166,106.67,4).",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#211f35";
+      ctx.fillRect(40, 110, 320, 60);
+      const w = 320 / 3;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = i === 0 ? "#edeaf6" : "#8b87a6";
+        ctx.beginPath();
+        ctx.roundRect(40 + i * w + 25, 135, 56, 10, 5);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#ff5470";
+      ctx.fillRect(40, 166, w, 4);
+    }
+  },
+  {
+    slug: "ui-card",
+    type: "ui",
+    title: "Content Card",
+    difficulty: 4,
+    par: 400,
+    description:
+      "A card with a rounded thumbnail, a title bar and two lines of body text underneath.",
+    hint: "Card roundRect(80,60,240,180,16) in #1c1b2e. Thumb roundRect(96,76,208,80,10) in #322f4d. Title rect(96,170,150,12) in #edeaf6. Body rects (96,192,180,8) and (96,208,120,8) in #8b87a6.",
+    starterCode: VISUAL_STARTER,
+    drawTarget(ctx) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#1c1b2e";
+      ctx.beginPath();
+      ctx.roundRect(80, 60, 240, 180, 16);
+      ctx.fill();
+      ctx.fillStyle = "#322f4d";
+      ctx.beginPath();
+      ctx.roundRect(96, 76, 208, 80, 10);
+      ctx.fill();
+      ctx.fillStyle = "#edeaf6";
+      ctx.fillRect(96, 170, 150, 12);
+      ctx.fillStyle = "#8b87a6";
+      ctx.fillRect(96, 192, 180, 8);
+      ctx.fillRect(96, 208, 120, 8);
+    }
+  }
+];
+
+// ============================================================================
+// Animation — render(ctx, t) where t runs 0 -> 1 and loops.
+//
+// `t` is supplied by the harness, never read from a clock, so a run is
+// perfectly reproducible. Scoring samples the frames below and averages the
+// pixel match across all of them, which means the whole motion has to be
+// right rather than one convenient pose.
+// ============================================================================
+const ANIM_FRAMES = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
+
+const ANIM_STARTER =
+  "function render(ctx, t) {\n" +
+  "  // ctx is a 400x300 CanvasRenderingContext2D.\n" +
+  "  // t goes from 0 to 1 and then loops. Draw one frame.\n" +
+  "}\n";
+
+const ANIM_LEVELS = [
+  {
+    slug: "anim-progress-fill",
+    type: "anim",
+    title: "Filling Progress",
+    difficulty: 1,
+    par: 260,
+    description: "A progress bar that fills from empty to full across one loop.",
+    hint: "Track #211f35 at (60,140,280,20). The fill is #5eead4 with width 280*t.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#211f35";
+      ctx.fillRect(60, 140, 280, 20);
+      ctx.fillStyle = "#5eead4";
+      ctx.fillRect(60, 140, 280 * t, 20);
+    }
+  },
+  {
+    slug: "anim-pulse",
+    type: "anim",
+    title: "Pulse",
+    difficulty: 2,
+    par: 250,
+    description: "A single circle breathing in and out, once per loop.",
+    hint: "Radius is 40 + sin(t*2*PI)*25, centred at (200,150), fill #a5b4fc.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      ctx.arc(200, 150, 40 + Math.sin(t * Math.PI * 2) * 25, 0, Math.PI * 2);
+      ctx.fillStyle = "#a5b4fc";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "anim-bouncing-ball",
+    type: "anim",
+    title: "Bouncing Ball",
+    difficulty: 2,
+    par: 270,
+    description: "A ball bouncing between the top and the floor. Two bounces per loop.",
+    hint: "y = 60 + abs(sin(t*2*PI)) * 180. Circle r=26 at x=200, fill #ff5470.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      ctx.arc(200, 60 + Math.abs(Math.sin(t * Math.PI * 2)) * 180, 26, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff5470";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "anim-orbit",
+    type: "anim",
+    title: "Orbit",
+    difficulty: 2,
+    par: 300,
+    description: "A small moon circling a larger body, one full revolution per loop.",
+    hint: "Sun: #f5a623 r=30 at (200,150). Moon: angle a = t*2*PI, centre (200+cos(a)*110, 150+sin(a)*110), r=14, fill #5eead4.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#0b0b12";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      ctx.arc(200, 150, 30, 0, Math.PI * 2);
+      ctx.fillStyle = "#f5a623";
+      ctx.fill();
+      const a = t * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(200 + Math.cos(a) * 110, 150 + Math.sin(a) * 110, 14, 0, Math.PI * 2);
+      ctx.fillStyle = "#5eead4";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "anim-rotating-square",
+    type: "anim",
+    title: "Rotating Square",
+    difficulty: 3,
+    par: 300,
+    description: "A square spinning once about the centre of the canvas.",
+    hint: "save(), translate(200,150), rotate(t*2*PI), fillRect(-55,-55,110,110) in #ff5470, restore().",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#0b0b12";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.save();
+      ctx.translate(200, 150);
+      ctx.rotate(t * Math.PI * 2);
+      ctx.fillStyle = "#ff5470";
+      ctx.fillRect(-55, -55, 110, 110);
+      ctx.restore();
+    }
+  },
+  {
+    slug: "anim-loading-spinner",
+    type: "anim",
+    title: "Loading Spinner",
+    difficulty: 3,
+    par: 320,
+    description: "The classic spinner: a three-quarter arc rotating around a faint track.",
+    hint: "Track: full circle r=60 at (200,150), stroke #211f35, lineWidth 12. Arc: same radius, from t*2*PI to t*2*PI + 1.5*PI, stroke #5eead4, lineWidth 12, round cap.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.arc(200, 150, 60, 0, Math.PI * 2);
+      ctx.strokeStyle = "#211f35";
+      ctx.stroke();
+      const a = t * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(200, 150, 60, a, a + Math.PI * 1.5);
+      ctx.strokeStyle = "#5eead4";
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+  },
+  {
+    slug: "anim-pendulum",
+    type: "anim",
+    title: "Pendulum",
+    difficulty: 3,
+    par: 350,
+    description: "A weight swinging from a fixed pivot at the top of the canvas.",
+    hint: "angle a = sin(t*2*PI)*0.9. Bob at (200+sin(a)*150, 40+cos(a)*150). Rod from (200,40), stroke #8b87a6 lineWidth 3. Bob r=22 fill #f5a623.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      const a = Math.sin(t * Math.PI * 2) * 0.9;
+      const x = 200 + Math.sin(a) * 150;
+      const y = 40 + Math.cos(a) * 150;
+      ctx.beginPath();
+      ctx.moveTo(200, 40);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = "#8b87a6";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 22, 0, Math.PI * 2);
+      ctx.fillStyle = "#f5a623";
+      ctx.fill();
+    }
+  },
+  {
+    slug: "anim-bouncing-dots",
+    type: "anim",
+    title: "Typing Dots",
+    difficulty: 4,
+    par: 340,
+    description:
+      "The three-dot typing indicator. Each dot rides the same wave, offset a little behind the last.",
+    hint: "Dot i sits at x = 140 + i*60, y = 150 + sin((t + i*0.15)*2*PI)*40, r=16, fill #5eead4.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.fillStyle = "#5eead4";
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(140 + i * 60, 150 + Math.sin((t + i * 0.15) * Math.PI * 2) * 40, 16, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+  {
+    slug: "anim-traveling-wave",
+    type: "anim",
+    title: "Travelling Wave",
+    difficulty: 4,
+    par: 330,
+    description: "A sine wave sliding steadily to the right. One full phase per loop.",
+    hint: "For x from 0 to 400: y = 150 + sin(x/40 - t*2*PI)*60. Stroke #5eead4, lineWidth 4.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#131320";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.beginPath();
+      for (let x = 0; x <= 400; x++) {
+        const y = 150 + Math.sin(x / 40 - t * Math.PI * 2) * 60;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "#5eead4";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+  },
+  {
+    slug: "anim-expanding-rings",
+    type: "anim",
+    title: "Radar Rings",
+    difficulty: 5,
+    par: 380,
+    description:
+      "Three rings expanding outward and fading as they go, evenly spaced through the cycle.",
+    hint: "For i in 0..2: p = (t + i/3) % 1, radius p*130 at (200,150), stroke 'rgba(94,234,212,' + (1-p) + ')', lineWidth 4.",
+    starterCode: ANIM_STARTER,
+    drawTarget(ctx, t) {
+      ctx.fillStyle = "#0b0b12";
+      ctx.fillRect(0, 0, 400, 300);
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 3; i++) {
+        const pr = (t + i / 3) % 1;
+        ctx.beginPath();
+        ctx.arc(200, 150, pr * 130, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(94,234,212," + (1 - pr) + ")";
+        ctx.stroke();
+      }
+    }
+  }
+];
+
+// ----------------------------------------------------------------------------
+// Registry
+//
+// `type` picks both the display section and the execution engine:
+//   visual / ui -> one static frame     anim -> six sampled frames
+//   golf        -> test cases
+// ----------------------------------------------------------------------------
+const LEVEL_GROUPS = [
+  {
+    key: "visual",
+    label: "Visual Match",
+    tag: "Visual",
+    blurb: "recreate the target canvas",
+    levels: VISUAL_LEVELS
+  },
+  {
+    key: "ui",
+    label: "UI Components",
+    tag: "UI",
+    blurb: "rebuild a classic interface piece, pixel for pixel",
+    levels: UI_LEVELS
+  },
+  {
+    key: "anim",
+    label: "Animation",
+    tag: "Animation",
+    blurb: "match the motion — scored across six frames of the loop",
+    levels: ANIM_LEVELS
+  },
+  {
+    key: "golf",
+    label: "Code-Golf",
+    tag: "Code-Golf",
+    blurb: "pass every test in the fewest characters",
+    levels: GOLF_LEVELS
+  }
+];
+
+const ALL_LEVELS = LEVEL_GROUPS.flatMap((g) => g.levels);
 const LEVELS_BY_SLUG = Object.fromEntries(ALL_LEVELS.map((l) => [l.slug, l]));
+const TYPE_META = Object.fromEntries(LEVEL_GROUPS.map((g) => [g.key, g]));
+
+// True for anything scored by comparing canvas pixels.
+const isCanvasLevel = (l) => l.type !== "golf";

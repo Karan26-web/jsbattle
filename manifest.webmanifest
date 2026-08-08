@@ -1,7 +1,7 @@
 {
   "name": "JSBattle",
   "short_name": "JSBattle",
-  "description": "Recreate canvas artwork pixel-for-pixel and golf JavaScript down to the character. 23 ranked levels.",
+  "description": "Recreate canvas artwork pixel-for-pixel and golf JavaScript down to the character. 41 ranked levels.",
   "start_url": "./#/levels",
   "scope": "./",
   "display": "standalone",

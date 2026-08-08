@@ -117,6 +117,29 @@
     '      );',
     '      return;',
     '    }',
+    '    if (job.mode === "anim") {',
+    '      if (typeof render !== "function") {',
+    '        self.__jsbEmit({ t: TOKEN, ok: false, error: "You must define a function named render(ctx, t)." });',
+    '        return;',
+    '      }',
+    '      var ac = new OffscreenCanvas(job.size.w, job.size.h);',
+    '      var actx = ac.getContext("2d");',
+    '      var frames = [], xfer = [];',
+    '      for (var f = 0; f < job.times.length; f++) {',
+    '        // Reset between frames so a level that does not repaint its',
+    '        // background cannot inherit pixels from the previous frame.',
+    '        actx.setTransform(1, 0, 0, 1, 0, 0);',
+    '        actx.clearRect(0, 0, job.size.w, job.size.h);',
+    '        render(actx, job.times[f]);',
+    '        var fd = actx.getImageData(0, 0, job.size.w, job.size.h).data.buffer;',
+    '        frames.push(fd); xfer.push(fd);',
+    '      }',
+    '      self.__jsbEmit(',
+    '        { t: TOKEN, ok: true, width: job.size.w, height: job.size.h, frames: frames },',
+    '        xfer',
+    '      );',
+    '      return;',
+    '    }',
     '    if (typeof solve !== "function") {',
     '      self.__jsbEmit({ t: TOKEN, ok: false, error: "You must define a function named solve(...)." });',
     '      return;',
@@ -195,7 +218,12 @@
         settle({ type: replyType, ok: false, error: d.error || "Unknown error." });
         return;
       }
-      if (job.mode === "visual") {
+      if (job.mode === "anim") {
+        settle(
+          { type: replyType, ok: true, width: d.width, height: d.height, frames: d.frames },
+          d.frames
+        );
+      } else if (job.mode === "visual") {
         settle(
           { type: replyType, ok: true, width: d.width, height: d.height, pixels: d.pixels },
           [d.pixels]
@@ -277,6 +305,12 @@
         } else {
           runVisualOnMainThread(data.code, data.size);
         }
+      } else if (data.type === "run-anim") {
+        runInWorker(
+          data.code,
+          { mode: "anim", size: data.size, times: data.times },
+          "anim-result"
+        );
       } else if (data.type === "run-golf") {
         runInWorker(data.code, { mode: "golf", testCases: data.testCases }, "golf-result");
       } else if (data.type === "abort") {

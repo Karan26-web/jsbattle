@@ -1,8 +1,15 @@
 # JSBattle
 
-23 levels of canvas recreation and JavaScript code golf, with a unified XP
-economy, six ranked tiers, per-level medals, and an optional Supabase backend
-for real accounts and a global leaderboard.
+41 levels across four categories, with a unified XP economy, six ranked tiers,
+per-level medals, and an optional Supabase backend for real accounts and a
+global leaderboard.
+
+| Category | Levels | You write | Scored by |
+| --- | --- | --- | --- |
+| **Visual Match** | 11 | `render(ctx)` | pixels against a reference canvas |
+| **UI Components** | 8 | `render(ctx)` | pixels against a reference canvas |
+| **Animation** | 10 | `render(ctx, t)` | pixels across six sampled frames |
+| **Code-Golf** | 12 | `solve(...)` | tests passed, then character count |
 
 Zero build step — plain HTML/CSS/JS, CodeMirror and supabase-js from a CDN.
 
@@ -64,11 +71,28 @@ Both level types emit **0–1000 XP** so a Visual win and a Golf win are worth t
 same, which is what makes a single global ranking meaningful. Every level
 carries a `par`: the character count of a competent golfed solution.
 
-**Visual** — pixel match is compared against a reference drawn by trusted code,
-with a small tolerance for anti-aliasing. Below 60% match earns nothing (at that
-point you are matching background, not drawing). From 60→100% the curve is
-convex, so the fiddly last few percent is where the points are. A brevity bonus
-unlocks only at ≥97% match, so a tiny-but-wrong answer can never win.
+**Visual / UI** — pixel match against a reference drawn by trusted code, with a
+small tolerance for anti-aliasing. From 60→100% the curve is convex, so the
+fiddly last few percent is where the points are. A brevity bonus unlocks only at
+≥97% match, so a tiny-but-wrong answer can never win.
+
+Pixels are **weighted**, which matters more than it sounds. A flat "fraction of
+pixels that match" is dominated by background: on the orbit level the moving
+moon is ~0.5% of 120,000 pixels, so a submission that painted the background and
+drew nothing else measured 97% and scored **903 of 1000**, and code that ignored
+`t` entirely came within 13 points of a correct animation. Now a pixel counts
+fully whenever the target *or* the player's output has something other than the
+background colour there, and background-on-background agreement is worth 0.05.
+The same submissions now score **12** and **559** against 958 for a correct one.
+Weighting both sides also penalises painting extra ink where the target has none.
+
+**Animation** — `render(ctx, t)` is called with `t` running 0→1. The value comes
+from the harness and is never read from a clock, so a run is reproducible.
+Scoring samples six fixed values of `t` and averages the match across all of
+them, so the whole motion has to be right rather than one convenient pose: a
+correct shape at the wrong phase, at half speed, or orbiting backwards all fail.
+Playback is cosmetic — the target is redrawn live from trusted code while the
+player's canvas cycles the frames their run actually produced.
 
 ```
 100% at par     950      97%  at par   851      75% at par   207
@@ -176,16 +200,25 @@ What the schema gives you:
 
 ## Adding a level
 
-**Visual** — add to `VISUAL_LEVELS` with a `drawTarget(ctx)`. That function is
-the answer key, drawn with trusted code on the main thread and compared
-pixel-by-pixel against the player's `render(ctx)`. Set `par` to the character
-count of a solution you would be happy with.
+**Visual / UI** — add to `VISUAL_LEVELS` or `UI_LEVELS` with a `drawTarget(ctx)`.
+That function is the answer key, drawn with trusted code on the main thread and
+compared pixel-by-pixel against the player's `render(ctx)`. Set `par` to the
+character count of a solution you would be happy with.
+
+**Animation** — add to `ANIM_LEVELS` with `drawTarget(ctx, t)`. Make it a pure
+function of `t` — no clock, no `Math.random()` — or the level cannot be matched.
 
 **Golf** — add to `GOLF_LEVELS` with `visibleTests` and `hiddenTests` arrays of
 `{ input: [...], expected: ... }`. `input` is spread as arguments, and
 comparison is `JSON.stringify` deep equality. Set `par` the same way.
 
-Both take a `hint`, shown behind a toggle.
+All take a `hint`, shown behind a toggle. Sections and filters are generated
+from `LEVEL_GROUPS`, so a new category appears on the level select and in the
+filter bar without touching `app.js`.
+
+> **Never use `fillText` in a target.** Font rasterisation differs between
+> machines and browsers, so a target containing real text can never be matched
+> reliably. The UI levels represent labels as bars, the way a wireframe does.
 
 ## Deploying to your own domain
 
